@@ -1,0 +1,1022 @@
+<!DOCTYPE html>
+<html lang="ru" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <title>CCTV Manager - Панель управления</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        .pulse-online {
+            display: inline-block;
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background-color: #28a745;
+            box-shadow: 0 0 8px #28a745;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.7); }
+            70% { transform: scale(1.1); box-shadow: 0 0 0 6px rgba(40, 167, 69, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(40, 167, 69, 0); }
+        }
+        .table-responsive { overflow-x: auto; }
+        .font-mono { font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 0.88rem; }
+    </style>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+</head>
+<body class="bg-body-tertiary">
+
+<!-- НАВБАР -->
+<nav class="navbar navbar-expand-lg bg-dark border-bottom border-secondary mb-4 px-4 sticky-top">
+    <a class="navbar-brand fw-bold text-primary" href="/"><i class="bi bi-camera-video-fill me-2"></i>CCTV Manager</a>
+    <span class="badge bg-secondary font-mono me-2"><i class="bi bi-hdd-network me-1"></i>Сервер: {{ server_ip }}</span>
+    <span class="badge bg-info-subtle text-info font-mono me-3"><i class="bi bi-broadcast me-1"></i>RTSP: :{{ rtsp_port }}</span>
+    
+    <div class="ms-auto d-flex gap-2">
+        <form action="/sync-mediamtx" method="post" class="d-inline">
+            <button type="submit" class="btn btn-outline-warning btn-sm" title="Синхронизировать конфигурацию всех камер с MediaMTX">
+                <i class="bi bi-arrow-repeat me-1"></i>Синхронизировать с MediaMTX
+            </button>
+        </form>
+        
+        <div class="dropdown">
+            <button class="btn btn-outline-light btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                <i class="bi bi-download me-1"></i>Выгрузка
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end shadow">
+                <li><a class="dropdown-item" href="/export/csv"><i class="bi bi-file-earmark-spreadsheet me-2 text-success"></i>Выгрузить в Excel (CSV)</a></li>
+                <li><a class="dropdown-item" href="/export/m3u"><i class="bi bi-music-player me-2 text-primary"></i>Плейлист M3U (для VLC / SmartTV)</a></li>
+                <li><a class="dropdown-item" href="/export/json"><i class="bi bi-filetype-json me-2 text-warning"></i>Резервная копия базы (JSON)</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="/routers/download-backup"><i class="bi bi-box-seam me-2 text-info"></i>Скачать эталонный бэкап роутера (.tar.gz)</a></li>
+            </ul>
+        </div>
+        
+        <a href="/logout" class="btn btn-outline-danger btn-sm"><i class="bi bi-box-arrow-right me-1"></i>Выход</a>
+    </div>
+</nav>
+
+<div class="container-fluid px-4">
+    <!-- СТАТИСТИКА -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card p-3 shadow-sm border-0 border-start border-primary border-4 bg-body">
+                <div class="text-muted small">Объектов и локаций</div>
+                <div class="fs-4 fw-bold">{{ sites|length }}</div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card p-3 shadow-sm border-0 border-start border-success border-4 bg-body">
+                <div class="text-muted small">Роутеров онлайн</div>
+                <div class="fs-4 fw-bold">
+                    <span class="text-success">{{ routers|selectattr('is_online', 'equalto', 1)|list|length }}</span> / {{ routers|length }}
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card p-3 shadow-sm border-0 border-start border-info border-4 bg-body">
+                <div class="text-muted small">Подключенных камер</div>
+                <div class="fs-4 fw-bold">{{ cameras|length }}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- КНОПКИ БЫСТРОГО ДОБАВЛЕНИЯ -->
+    <div class="d-flex gap-2 mb-4">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addCamModal">
+            <i class="bi bi-camera-video me-1"></i>+ Добавить камеру
+        </button>
+        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addRouterModal">
+            <i class="bi bi-router me-1"></i>+ Добавить роутер
+        </button>
+        <button class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#addSiteModal">
+            <i class="bi bi-geo-alt me-1"></i>+ Добавить объект / адрес
+        </button>
+    </div>
+
+    <!-- ТАБЛИЦА 1: КАМЕРЫ -->
+    <div class="card shadow-sm border-0 mb-4 bg-body">
+        <div class="card-header bg-dark fw-bold py-3 d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-camera-video me-2 text-primary"></i>Камеры и видеопотоки (MediaMTX)</span>
+            <span class="badge bg-primary-subtle text-primary">{{ cameras|length }} камер</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead>
+                    <tr class="table-dark">
+                        <th>Статус</th>
+                        <th>Камера / Объект</th>
+                        <th>Роутер (Туннель)</th>
+                        <th>RTSP ссылка (VLC)</th>
+                        <th>HLS ссылка (Браузер)</th>
+                        <th class="text-end">Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% if cameras|length == 0 %}
+                    <tr><td colspan="6" class="text-center text-muted py-4">Нет добавленных камер. Нажмите «+ Добавить камеру».</td></tr>
+                {% endif %}
+                {% for cam in cameras %}
+                    <tr>
+                        <td>
+                            {% if cam.status == 'online' %}
+                            <span class="badge bg-success-subtle text-success border border-success d-inline-flex align-items-center gap-1">
+                                <span class="pulse-online"></span> Онлайн
+                            </span>
+                            {% else %}
+                            <span class="badge bg-secondary">Оффлайн</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="fw-bold">{{ cam.name }}</div>
+                            <div class="text-muted small"><i class="bi bi-geo-alt me-1"></i>{{ cam.site_name or 'Без объекта' }}</div>
+                        </td>
+                        <td>
+                            <span class="badge bg-dark border font-mono">
+                                <i class="bi bi-router me-1"></i>{{ cam.router_name or 'Не привязан' }}
+                                {% if cam.tunnel_port %} (порт {{ cam.tunnel_port }}){% endif %}
+                            </span>
+                        </td>
+                        <td>
+                            <div class="input-group input-group-sm" style="max-width: 320px;">
+                                <input type="text" class="form-control font-mono" value="{{ cam.rtsp_public }}" readonly id="rtsp-{{ cam.id }}">
+                                <button class="btn btn-outline-secondary" onclick="copyText('rtsp-{{ cam.id }}')" title="Скопировать ссылку"><i class="bi bi-clipboard"></i></button>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="input-group input-group-sm" style="max-width: 320px;">
+                                <input type="text" class="form-control font-mono" value="{{ cam.hls_public }}" readonly id="hls-{{ cam.id }}">
+                                <button class="btn btn-outline-secondary" onclick="copyText('hls-{{ cam.id }}')" title="Скопировать ссылку"><i class="bi bi-clipboard"></i></button>
+                            </div>
+                        </td>
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-success me-1" onclick="playHls('{{ cam.name }}', '{{ cam.hls_public }}')">
+                                <i class="bi bi-play-circle me-1"></i>Смотреть
+                            </button>
+                            <a href="http://{{ server_ip }}:{{ (cam.tunnel_port or 1554) + 300 }}/" target="_blank" class="btn btn-sm btn-outline-warning me-1" title="Открыть веб-интерфейс камеры (Hikvision, Dahua, Uniview и др.)">
+                                <i class="bi bi-gear-fill me-1"></i>Настройка камеры
+                            </a>
+                            <button class="btn btn-sm btn-outline-primary me-1" onclick="openEditCamModal({{ cam.id }}, '{{ cam.site_id }}', '{{ cam.router_id }}', '{{ cam.name|e }}', '{{ cam.slug|e }}', '{{ cam.cam_ip|e }}', {{ cam.cam_port }}, '{{ cam.username|e }}', '{{ cam.password|e }}', '{{ cam.channel|e }}')" title="Редактировать">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <form action="/cameras/{{ cam.id }}/delete" method="post" class="d-inline" onsubmit="return confirm('Удалить камеру {{ cam.name }}?');">
+                                <button class="btn btn-sm btn-outline-danger" title="Удалить"><i class="bi bi-trash"></i></button>
+                            </form>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ТАБЛИЦА 2: РОУТЕРЫ -->
+    <div class="card shadow-sm border-0 mb-4 bg-body">
+        <div class="card-header bg-dark fw-bold py-3 d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-router me-2 text-success"></i>Роутеры 4G и Обратные SSH-туннели</span>
+            <span class="badge bg-success-subtle text-success">{{ routers|length }} роутеров</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead>
+                    <tr class="table-dark">
+                        <th>Состояние</th>
+                        <th>Роутер / Модель</th>
+                        <th>Объект / Адрес</th>
+                        <th>Порт туннеля</th>
+                        <th>Последняя активность</th>
+                        <th class="text-end">Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% if routers|length == 0 %}
+                    <tr><td colspan="6" class="text-center text-muted py-4">Нет добавленных роутеров. Нажмите «+ Добавить роутер».</td></tr>
+                {% endif %}
+                {% for r in routers %}
+                    <tr>
+                        <td>
+                            {% if r.is_online == 1 %}
+                            <span class="badge bg-success-subtle text-success border border-success d-inline-flex align-items-center gap-1">
+                                <span class="pulse-online"></span> В сети
+                            </span>
+                            {% else %}
+                            <span class="badge bg-secondary">Не в сети</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="fw-bold">{{ r.name }}</div>
+                            <div class="d-flex align-items-center gap-1 mt-1 flex-wrap">
+                                <span class="text-muted small">{{ r.model or 'Cudy LT300' }}</span>
+                                {% if r.uplink_type == 'wan' %}
+                                <span class="badge bg-secondary-subtle text-light border border-secondary" title="Подключение через сетевой кабель объекта"><i class="bi bi-ethernet text-primary me-1"></i>Кабель (WAN)</span>
+                                {% elif r.uplink_type == 'wifi' %}
+                                <span class="badge bg-info-subtle text-info border border-info" title="Подключение по Wi-Fi к сети объекта"><i class="bi bi-wifi me-1"></i>Wi-Fi: {{ r.wifi_ssid or 'Объект' }}</span>
+                                {% else %}
+                                <span class="badge bg-success-subtle text-success border border-success" title="Автономная работа через 4G SIM-карту"><i class="bi bi-sim me-1"></i>4G SIM</span>
+                                {% endif %}
+                            </div>
+                        </td>
+                        <td>
+                            <div>{{ r.site_name or 'Без объекта' }}</div>
+                        </td>
+                        <td>
+                            <span class="badge bg-info-subtle text-info font-mono fs-6">{{ r.tunnel_port }}</span>
+                        </td>
+                        <td class="small text-muted font-mono">
+                            {{ r.last_seen or '-' }}
+                        </td>
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-dark text-warning border-secondary me-1" onclick="openTerminalModal({{ r.id }}, '{{ r.name|e }}', {{ r.tunnel_port }}, '{{ (r.ssh_password or '')|e }}')" title="Открыть веб-консоль SSH прямо в браузере">
+                                <i class="bi bi-terminal-fill me-1"></i>Консоль
+                            </button>
+                            <a href="http://{{ server_ip }}:{{ (r.tunnel_port or 1554) + 200 }}/" target="_blank" class="btn btn-sm btn-outline-secondary me-1" title="Открыть веб-панель управления роутером (OpenWrt LuCI)">
+                                <i class="bi bi-sliders me-1"></i>Панель LuCI
+                            </a>
+                            <button class="btn btn-sm btn-outline-info me-1" onclick="showRouterInstructions('{{ r.name|e }}', {{ r.tunnel_port }}, '{{ r.uplink_type or 'lte' }}', '{{ (r.wifi_ssid or '')|e }}', '{{ (r.wifi_password or '')|e }}')" title="Инструкция по настройке этого роутера">
+                                <i class="bi bi-terminal me-1"></i>Команда
+                            </button>
+                            <button class="btn btn-sm btn-outline-primary me-1" onclick="openEditRouterModal({{ r.id }}, '{{ r.site_id }}', '{{ r.name|e }}', {{ r.tunnel_port }}, '{{ r.model|e }}', '{{ (r.notes or '')|e }}', '{{ r.uplink_type or 'lte' }}', '{{ (r.wifi_ssid or '')|e }}', '{{ (r.wifi_password or '')|e }}', '{{ (r.ssh_password or '')|e }}')" title="Редактировать">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <form action="/routers/{{ r.id }}/delete" method="post" class="d-inline" onsubmit="return confirm('Удалить роутер {{ r.name }}? Все привязанные к нему камеры также будут удалены!');">
+                                <button class="btn btn-sm btn-outline-danger" title="Удалить"><i class="bi bi-trash"></i></button>
+                            </form>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ТАБЛИЦА 3: ОБЪЕКТЫ -->
+    <div class="card shadow-sm border-0 mb-5 bg-body">
+        <div class="card-header bg-dark fw-bold py-3 d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-geo-alt me-2 text-info"></i>Объекты и адреса</span>
+            <span class="badge bg-info-subtle text-info">{{ sites|length }} объектов</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead>
+                    <tr class="table-dark">
+                        <th>ID</th>
+                        <th>Название объекта</th>
+                        <th>Адрес</th>
+                        <th>Заметки / Контакты</th>
+                        <th>Роутеров</th>
+                        <th>Камер</th>
+                        <th class="text-end">Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% if sites|length == 0 %}
+                    <tr><td colspan="7" class="text-center text-muted py-4">Нет объектов. Нажмите «+ Добавить объект / адрес».</td></tr>
+                {% endif %}
+                {% for s in sites %}
+                    <tr>
+                        <td class="font-mono text-muted">{{ s.id }}</td>
+                        <td class="fw-bold">{{ s.name }}</td>
+                        <td>{{ s.address or '-' }}</td>
+                        <td class="small text-muted">{{ s.notes or '-' }}</td>
+                        <td><span class="badge bg-secondary">{{ s.router_count }}</span></td>
+                        <td><span class="badge bg-primary">{{ s.camera_count }}</span></td>
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-outline-primary me-1" onclick="openEditSiteModal({{ s.id }}, '{{ s.name|e }}', '{{ s.address|e }}', '{{ s.notes|e }}')" title="Редактировать">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <form action="/sites/{{ s.id }}/delete" method="post" class="d-inline" onsubmit="return confirm('Удалить объект {{ s.name }}? Все привязанные к нему роутеры и камеры также будут удалены!');">
+                                <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                            </form>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- МОДАЛЬНОЕ ОКНО ПЛЕЕРА -->
+<div class="modal fade" id="playerModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content bg-dark text-white border-secondary">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title" id="playerTitle">Просмотр камеры</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0">
+                <video id="videoPlayer" controls autoplay muted style="width: 100%; max-height: 500px; background: #000;"></video>
+            </div>
+            <div class="modal-footer border-secondary justify-content-between">
+                <div class="small text-muted font-mono" id="playerUrl"></div>
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Закрыть</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- МОДАЛЬНОЕ ОКНО: КОМАНДА ДЛЯ РОУТЕРА -->
+<div class="modal fade" id="routerInstructionModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content bg-dark text-white border-secondary">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title"><i class="bi bi-terminal me-2 text-info"></i>Настройка роутера: <span id="instrRouterName" class="text-info"></span></h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <span class="small text-muted">Выделенный порт туннеля: <b id="instrPortBadge" class="text-info font-mono fs-6"></b></span>
+                    <span class="badge bg-secondary font-mono" id="instrActiveBadge">Режим: 4G SIM</span>
+                </div>
+
+                <!-- НАВИГАЦИЯ ПО РЕЖИМАМ ПОДКЛЮЧЕНИЯ -->
+                <ul class="nav nav-pills nav-fill mb-3" id="instrTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="tab-lte" data-bs-toggle="pill" data-bs-target="#pane-lte" type="button"><i class="bi bi-sim me-1"></i>1. 4G SIM-карта</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="tab-wan" data-bs-toggle="pill" data-bs-target="#pane-wan" type="button"><i class="bi bi-ethernet me-1"></i>2. Кабель (WAN)</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="tab-wifi" data-bs-toggle="pill" data-bs-target="#pane-wifi" type="button"><i class="bi bi-wifi me-1"></i>3. Wi-Fi объекта</button>
+                    </li>
+                </ul>
+
+                <div class="tab-content">
+                    <!-- ВКЛАДКА 1: 4G LTE -->
+                    <div class="tab-pane fade show active" id="pane-lte">
+                        <div class="small text-muted mb-2"><i class="bi bi-check2-circle text-success me-1"></i>Роутер работает автономно через встроенную SIM-карту 4G. Оба сетевых разъёма объединены в LAN для камер.</div>
+                        <div class="position-relative mb-3">
+                            <pre class="bg-black p-3 rounded font-mono text-success mb-0" id="cmdLte" style="white-space: pre-wrap; word-break: break-all;"></pre>
+                            <button class="btn btn-sm btn-outline-light position-absolute top-0 end-0 m-2" onclick="copyPre('cmdLte')">
+                                <i class="bi bi-clipboard me-1"></i>Скопировать
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- ВКЛАДКА 2: КАБЕЛЬ WAN -->
+                    <div class="tab-pane fade" id="pane-wan">
+                        <div class="small text-muted mb-2"><i class="bi bi-info-circle text-info me-1"></i>Кабель от местного роутера/провайдера вставляется в <b>синий порт WAN</b>. Камера подключается в <b>порт LAN</b>.</div>
+                        <div class="position-relative mb-3">
+                            <pre class="bg-black p-3 rounded font-mono text-warning mb-0" id="cmdWan" style="white-space: pre-wrap; word-break: break-all;"></pre>
+                            <button class="btn btn-sm btn-outline-light position-absolute top-0 end-0 m-2" onclick="copyPre('cmdWan')">
+                                <i class="bi bi-clipboard me-1"></i>Скопировать
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- ВКЛАДКА 3: WI-FI -->
+                    <div class="tab-pane fade" id="pane-wifi">
+                        <div class="small text-muted mb-2"><i class="bi bi-info-circle text-info me-1"></i>Роутер подключается по воздуху к Wi-Fi сети объекта. Камера остаётся подключена по кабелю в роутер.</div>
+                        <div class="row g-2 mb-2">
+                            <div class="col-6">
+                                <label class="small text-muted">Имя сети Wi-Fi (SSID):</label>
+                                <input type="text" id="liveWifiSsid" class="form-control form-control-sm font-mono" placeholder="School_Free_WiFi" oninput="updateLiveWifiCmd()">
+                            </div>
+                            <div class="col-6">
+                                <label class="small text-muted">Пароль от Wi-Fi:</label>
+                                <input type="text" id="liveWifiPass" class="form-control form-control-sm font-mono" placeholder="Пароль" oninput="updateLiveWifiCmd()">
+                            </div>
+                        </div>
+                        <div class="position-relative mb-3">
+                            <pre class="bg-black p-3 rounded font-mono text-info mb-0" id="cmdWifi" style="white-space: pre-wrap; word-break: break-all;"></pre>
+                            <button class="btn btn-sm btn-outline-light position-absolute top-0 end-0 m-2" onclick="copyPre('cmdWifi')">
+                                <i class="bi bi-clipboard me-1"></i>Скопировать
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="alert alert-secondary py-2 small mb-0">
+                    <i class="bi bi-shield-check me-1 text-primary"></i> <b>Инструкция для нового роутера:</b><br>
+                    1. Залейте в новый роутер <a href="/routers/download-backup" class="fw-bold text-decoration-none">эталонный бэкап (.tar.gz)</a>.<br>
+                    2. Выберите нужный тип подключения выше, скопируйте команду и вставьте в консоль роутера.<br>
+                    3. Роутер перезагрузится и через 45–60 сек автоматически появится в онлайне!
+                </div>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- МОДАЛЬНОЕ ОКНО: ДОБАВЛЕНИЕ КАМЕРЫ -->
+<div class="modal fade" id="addCamModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form class="modal-content bg-dark text-white border-secondary" method="post" action="/cameras/add">
+            <div class="modal-header border-secondary"><h5 class="modal-title">Добавить камеру</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Объект / Адрес</label>
+                    <select name="site_id" class="form-select" required>
+                        {% for s in sites %}<option value="{{ s.id }}">{{ s.name }} ({{ s.address or 'Без адреса' }})</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Роутер подключения</label>
+                    <select name="router_id" class="form-select" required>
+                        {% for r in routers %}<option value="{{ r.id }}">{{ r.name }} (порт туннеля {{ r.tunnel_port }})</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Название камеры</label>
+                    <input type="text" name="name" class="form-control" placeholder="Например: Камера 2 (Парковка)" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Идентификатор потока (Slug, латиницей)</label>
+                    <input type="text" name="slug" class="form-control font-mono" value="{{ next_slug }}" required>
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-8">
+                        <label class="form-label small text-muted">Локальный IP камеры</label>
+                        <input type="text" name="cam_ip" class="form-control font-mono" value="192.168.1.213" required>
+                    </div>
+                    <div class="col-4">
+                        <label class="form-label small text-muted">Порт RTSP</label>
+                        <input type="number" name="cam_port" class="form-control font-mono" value="554" required>
+                    </div>
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label small text-muted">Логин камеры</label>
+                        <input type="text" name="username" class="form-control" value="admin" required>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small text-muted">Пароль камеры</label>
+                        <input type="password" name="password" class="form-control" value="megatek123" required>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted">RTSP канал (Hikvision)</label>
+                    <input type="text" name="channel" class="form-control font-mono" value="/Streaming/Channels/101" required>
+                </div>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="submit" class="btn btn-primary">Создать и включить поток</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- МОДАЛЬНОЕ ОКНО: РЕДАКТИРОВАНИЕ КАМЕРЫ -->
+<div class="modal fade" id="editCamModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form class="modal-content bg-dark text-white border-secondary" method="post" id="editCamForm">
+            <div class="modal-header border-secondary"><h5 class="modal-title">Редактировать камеру</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Объект / Адрес</label>
+                    <select name="site_id" id="editCamSiteId" class="form-select" required>
+                        {% for s in sites %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Роутер подключения</label>
+                    <select name="router_id" id="editCamRouterId" class="form-select" required>
+                        {% for r in routers %}<option value="{{ r.id }}">{{ r.name }} (порт {{ r.tunnel_port }})</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Название камеры</label>
+                    <input type="text" name="name" id="editCamName" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Идентификатор потока (Slug)</label>
+                    <input type="text" name="slug" id="editCamSlug" class="form-control font-mono" required>
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-8">
+                        <label class="form-label small text-muted">Локальный IP камеры</label>
+                        <input type="text" name="cam_ip" id="editCamIp" class="form-control font-mono" required>
+                    </div>
+                    <div class="col-4">
+                        <label class="form-label small text-muted">Порт</label>
+                        <input type="number" name="cam_port" id="editCamPort" class="form-control font-mono" required>
+                    </div>
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label small text-muted">Логин</label>
+                        <input type="text" name="username" id="editCamUser" class="form-control" required>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small text-muted">Пароль</label>
+                        <input type="password" name="password" id="editCamPass" class="form-control" required>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Канал</label>
+                    <input type="text" name="channel" id="editCamChannel" class="form-control font-mono" required>
+                </div>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="submit" class="btn btn-primary">Сохранить изменения</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- МОДАЛЬНОЕ ОКНО: ДОБАВЛЕНИЕ РОУТЕРА -->
+<div class="modal fade" id="addRouterModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form class="modal-content bg-dark text-white border-secondary" method="post" action="/routers/add">
+            <div class="modal-header border-secondary"><h5 class="modal-title">Добавить роутер</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Объект / Адрес</label>
+                    <select name="site_id" class="form-select" required>
+                        {% for s in sites %}<option value="{{ s.id }}">{{ s.name }} ({{ s.address or 'Без адреса' }})</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Название роутера</label>
+                    <input type="text" name="name" class="form-control" placeholder="Например: Роутер Cudy 4G №2" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Выделенный порт туннеля на сервере</label>
+                    <input type="number" name="tunnel_port" class="form-control font-mono" value="{{ next_port }}" required>
+                    <div class="form-text small text-muted">Каждому роутеру присваивается уникальный порт туннеля (1551, 1552, 1553...).</div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted fw-bold text-info"><i class="bi bi-hdd-network me-1"></i>Тип подключения к интернету</label>
+                    <select name="uplink_type" id="addUplinkType" class="form-select border-info" onchange="toggleWifiFields('add')">
+                        <option value="lte" selected>📶 4G / LTE (SIM-карта в роутере)</option>
+                        <option value="wan">🌐 Провод Ethernet (кабель в синий порт WAN)</option>
+                        <option value="wifi">📡 Wi-Fi сеть объекта (WISP по воздуху)</option>
+                    </select>
+                </div>
+                <div id="addWifiFields" class="p-3 mb-3 rounded bg-black border border-info" style="display: none;">
+                    <div class="small fw-bold text-info mb-2"><i class="bi bi-wifi me-1"></i>Настройки Wi-Fi сети объекта</div>
+                    <div class="mb-2">
+                        <label class="form-label small text-muted">Имя сети Wi-Fi (SSID)</label>
+                        <input type="text" name="wifi_ssid" id="addWifiSsid" class="form-control font-mono form-control-sm" placeholder="Например: School_Free_WiFi">
+                    </div>
+                    <div>
+                        <label class="form-label small text-muted">Пароль от Wi-Fi</label>
+                        <input type="text" name="wifi_password" id="addWifiPass" class="form-control font-mono form-control-sm" placeholder="Пароль">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Модель роутера</label>
+                    <input type="text" name="model" class="form-control" value="Cudy LT300">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted"><i class="bi bi-shield-lock me-1"></i>Пароль root роутера (SSH)</label>
+                    <input type="password" name="ssh_password" class="form-control font-mono" placeholder="Оставьте пустым, если пароль на роутере не задан">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Заметки / Номер SIM-карты</label>
+                    <input type="text" name="notes" class="form-control" placeholder="SIM МТС +7916...">
+                </div>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="submit" class="btn btn-success">Добавить роутер</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- МОДАЛЬНОЕ ОКНО: РЕДАКТИРОВАНИЕ РОУТЕРА -->
+<div class="modal fade" id="editRouterModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form class="modal-content bg-dark text-white border-secondary" method="post" id="editRouterForm">
+            <div class="modal-header border-secondary"><h5 class="modal-title">Редактировать роутер</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Объект / Адрес</label>
+                    <select name="site_id" id="editRouterSiteId" class="form-select" required>
+                        {% for s in sites %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Название роутера</label>
+                    <input type="text" name="name" id="editRouterName" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Порт туннеля</label>
+                    <input type="number" name="tunnel_port" id="editRouterPort" class="form-control font-mono" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted fw-bold text-info"><i class="bi bi-hdd-network me-1"></i>Тип подключения к интернету</label>
+                    <select name="uplink_type" id="editUplinkType" class="form-select border-info" onchange="toggleWifiFields('edit')">
+                        <option value="lte">📶 4G / LTE (SIM-карта в роутере)</option>
+                        <option value="wan">🌐 Провод Ethernet (кабель в синий порт WAN)</option>
+                        <option value="wifi">📡 Wi-Fi сеть объекта (WISP по воздуху)</option>
+                    </select>
+                </div>
+                <div id="editWifiFields" class="p-3 mb-3 rounded bg-black border border-info" style="display: none;">
+                    <div class="small fw-bold text-info mb-2"><i class="bi bi-wifi me-1"></i>Настройки Wi-Fi сети объекта</div>
+                    <div class="mb-2">
+                        <label class="form-label small text-muted">Имя сети Wi-Fi (SSID)</label>
+                        <input type="text" name="wifi_ssid" id="editWifiSsid" class="form-control font-mono form-control-sm" placeholder="Например: School_Free_WiFi">
+                    </div>
+                    <div>
+                        <label class="form-label small text-muted">Пароль от Wi-Fi</label>
+                        <input type="text" name="wifi_password" id="editWifiPass" class="form-control font-mono form-control-sm" placeholder="Пароль">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Модель</label>
+                    <input type="text" name="model" id="editRouterModel" class="form-control">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted"><i class="bi bi-shield-lock me-1"></i>Пароль root роутера (SSH)</label>
+                    <input type="password" name="ssh_password" id="editRouterSshPwd" class="form-control font-mono" placeholder="Пароль root (или оставьте пустым)">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Заметки</label>
+                    <input type="text" name="notes" id="editRouterNotes" class="form-control">
+                </div>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="submit" class="btn btn-primary">Сохранить</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- МОДАЛЬНОЕ ОКНО: ДОБАВЛЕНИЕ ОБЪЕКТА -->
+<div class="modal fade" id="addSiteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form class="modal-content bg-dark text-white border-secondary" method="post" action="/sites/add">
+            <div class="modal-header border-secondary"><h5 class="modal-title">Добавить объект / локацию</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Название объекта</label>
+                    <input type="text" name="name" class="form-control" placeholder="Например: Склад №2 (Северный)" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Физический адрес</label>
+                    <input type="text" name="address" class="form-control" placeholder="г. Москва, ул. Ленина, д. 45">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Заметки / Ответственный</label>
+                    <input type="text" name="notes" class="form-control" placeholder="Охрана: +7 999 123-45-67">
+                </div>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="submit" class="btn btn-info">Сохранить объект</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- МОДАЛЬНОЕ ОКНО: РЕДАКТИРОВАНИЕ ОБЪЕКТА -->
+<div class="modal fade" id="editSiteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form class="modal-content bg-dark text-white border-secondary" method="post" id="editSiteForm">
+            <div class="modal-header border-secondary"><h5 class="modal-title">Редактировать объект</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Название объекта</label>
+                    <input type="text" name="name" id="editSiteName" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Адрес</label>
+                    <input type="text" name="address" id="editSiteAddress" class="form-control">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Заметки</label>
+                    <input type="text" name="notes" id="editSiteNotes" class="form-control">
+                </div>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="submit" class="btn btn-primary">Сохранить</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+let hlsInstance = null;
+
+function copyText(elemId) {
+    const input = document.getElementById(elemId);
+    input.select();
+    navigator.clipboard.writeText(input.value);
+    const toast = document.createElement('div');
+    toast.className = 'position-fixed bottom-0 end-0 p-3';
+    toast.style.zIndex = '9999';
+    toast.innerHTML = '<div class="toast show align-items-center text-white bg-success border-0"><div class="d-flex"><div class="toast-body"><i class="bi bi-check-circle me-2"></i>Ссылка скопирована в буфер!</div></div></div>';
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 2500);
+}
+
+function copyPre(elemId) {
+    const text = document.getElementById(elemId).innerText;
+    navigator.clipboard.writeText(text);
+    alert('Команда скопирована в буфер обмена!');
+}
+
+function playHls(title, hlsUrl) {
+    document.getElementById('playerTitle').innerText = title;
+    document.getElementById('playerUrl').innerText = hlsUrl;
+    const video = document.getElementById('videoPlayer');
+    const modal = new bootstrap.Modal(document.getElementById('playerModal'));
+    modal.show();
+
+    if (hlsInstance) {
+        hlsInstance.destroy();
+    }
+
+    const streamUrl = hlsUrl + '/index.m3u8';
+    if (Hls.isSupported()) {
+        hlsInstance = new Hls();
+        hlsInstance.loadSource(streamUrl);
+        hlsInstance.attachMedia(video);
+        hlsInstance.on(Hls.Events.MANIFEST_PARSED, function() {
+            video.play();
+        });
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = streamUrl;
+        video.addEventListener('loadedmetadata', function() {
+            video.play();
+        });
+    }
+}
+
+document.getElementById('playerModal').addEventListener('hidden.bs.modal', function () {
+    const video = document.getElementById('videoPlayer');
+    video.pause();
+    if (hlsInstance) {
+        hlsInstance.destroy();
+        hlsInstance = null;
+    }
+});
+
+let currentInstrPort = 1554;
+
+function toggleWifiFields(prefix) {
+    const val = document.getElementById(prefix === 'add' ? 'addUplinkType' : 'editUplinkType').value;
+    const box = document.getElementById(prefix === 'add' ? 'addWifiFields' : 'editWifiFields');
+    box.style.display = (val === 'wifi') ? 'block' : 'none';
+}
+
+function updateLiveWifiCmd() {
+    const ssid = document.getElementById('liveWifiSsid').value.trim() || 'WIFI_NAME';
+    const pass = document.getElementById('liveWifiPass').value.trim() || 'WIFI_PASSWORD';
+    const cmd = `uci set wireless.radio0.disabled='0'; uci set network.wan=interface; uci set network.wan.proto='dhcp'; uci commit network; uci set wireless.sta=wifi-iface; uci set wireless.sta.device='radio0'; uci set wireless.sta.mode='sta'; uci set wireless.sta.network='wan'; uci set wireless.sta.ssid='${ssid}'; uci set wireless.sta.key='${pass}'; uci set wireless.sta.encryption='psk2'; uci commit wireless; sed -i \"s|dbclient.*root@135.106.221.242|dbclient -y -i /root/.ssh/id_rsa -K 15 -N -R 127.0.0.1:${currentInstrPort}:192.168.1.213:554 -R 0.0.0.0:${currentInstrPort+300}:192.168.1.213:80 -R 0.0.0.0:${currentInstrPort+200}:127.0.0.1:80 root@135.106.221.242|g\" /etc/rc.local && reboot`;
+    document.getElementById('cmdWifi').innerText = cmd;
+}
+
+function showRouterInstructions(name, port, uplinkType, wifiSsid, wifiPass) {
+    currentInstrPort = port;
+    document.getElementById('instrRouterName').innerText = name;
+    document.getElementById('instrPortBadge').innerText = port;
+    
+    // Command 1: LTE (Full multi-port tunnel: RTSP + Cam Web + Router LuCI)
+    const lteCmd = `sed -i "s|dbclient.*root@135.106.221.242|dbclient -y -i /root/.ssh/id_rsa -K 15 -N -R 127.0.0.1:${port}:192.168.1.213:554 -R 127.0.0.1:${port+100}:127.0.0.1:22 -R 0.0.0.0:${port+300}:192.168.1.213:80 -R 0.0.0.0:${port+200}:127.0.0.1:80 root@135.106.221.242|g" /etc/rc.local && reboot`;
+    document.getElementById('cmdLte').innerText = lteCmd;
+    
+    // Command 2: WAN Cable (Full multi-port tunnel)
+    const wanCmd = `uci set network.vlan1=switch_vlan; uci set network.vlan1.device='switch0'; uci set network.vlan1.vlan='1'; uci set network.vlan1.ports='1 6t'; uci set network.vlan2=switch_vlan; uci set network.vlan2.device='switch0'; uci set network.vlan2.vlan='2'; uci set network.vlan2.ports='0 6t'; uci set network.lan.device='eth0.1'; uci set network.wan=interface; uci set network.wan.device='eth0.2'; uci set network.wan.proto='dhcp'; uci set network.wan6=interface; uci set network.wan6.device='eth0.2'; uci set network.wan6.proto='dhcpv6'; uci commit network; sed -i "s|dbclient.*root@135.106.221.242|dbclient -y -i /root/.ssh/id_rsa -K 15 -N -R 127.0.0.1:${port}:192.168.1.213:554 -R 127.0.0.1:${port+100}:127.0.0.1:22 -R 0.0.0.0:${port+300}:192.168.1.213:80 -R 0.0.0.0:${port+200}:127.0.0.1:80 root@135.106.221.242|g" /etc/rc.local && reboot`;
+    document.getElementById('cmdWan').innerText = wanCmd;
+    
+    // Command 3: WiFi
+    document.getElementById('liveWifiSsid').value = wifiSsid || '';
+    document.getElementById('liveWifiPass').value = wifiPass || '';
+    updateLiveWifiCmd();
+
+    // Select active tab
+    const tabTriggerEl = document.querySelector(`#tab-${uplinkType || 'lte'}`);
+    if (tabTriggerEl) {
+        bootstrap.Tab.getOrCreateInstance(tabTriggerEl).show();
+    }
+    
+    const badge = document.getElementById('instrActiveBadge');
+    if (uplinkType === 'wan') {
+        badge.innerText = 'Режим: Кабель WAN';
+        badge.className = 'badge bg-secondary';
+    } else if (uplinkType === 'wifi') {
+        badge.innerText = 'Режим: Wi-Fi ' + (wifiSsid ? `(${wifiSsid})` : '');
+        badge.className = 'badge bg-info text-dark';
+    } else {
+        badge.innerText = 'Режим: 4G SIM';
+        badge.className = 'badge bg-success';
+    }
+
+    new bootstrap.Modal(document.getElementById('routerInstructionModal')).show();
+}
+
+function openEditSiteModal(id, name, address, notes) {
+    document.getElementById('editSiteForm').action = '/sites/' + id + '/edit';
+    document.getElementById('editSiteName').value = name;
+    document.getElementById('editSiteAddress').value = address;
+    document.getElementById('editSiteNotes').value = notes;
+    new bootstrap.Modal(document.getElementById('editSiteModal')).show();
+}
+
+function openEditRouterModal(id, siteId, name, port, model, notes, uplinkType, wifiSsid, wifiPass, sshPwd) {
+    document.getElementById('editRouterSshPwd').value = sshPwd || '';
+    document.getElementById('editRouterForm').action = '/routers/' + id + '/edit';
+    document.getElementById('editRouterSiteId').value = siteId;
+    document.getElementById('editRouterName').value = name;
+    document.getElementById('editRouterPort').value = port;
+    document.getElementById('editRouterModel').value = model;
+    document.getElementById('editRouterNotes').value = notes;
+    document.getElementById('editUplinkType').value = uplinkType || 'lte';
+    document.getElementById('editWifiSsid').value = wifiSsid || '';
+    document.getElementById('editWifiPass').value = wifiPass || '';
+    toggleWifiFields('edit');
+    new bootstrap.Modal(document.getElementById('editRouterModal')).show();
+}
+
+function openEditCamModal(id, siteId, routerId, name, slug, camIp, camPort, username, password, channel) {
+    document.getElementById('editCamForm').action = '/cameras/' + id + '/edit';
+    document.getElementById('editCamSiteId').value = siteId;
+    document.getElementById('editCamRouterId').value = routerId;
+    document.getElementById('editCamName').value = name;
+    document.getElementById('editCamSlug').value = slug;
+    document.getElementById('editCamIp').value = camIp;
+    document.getElementById('editCamPort').value = camPort;
+    document.getElementById('editCamUser').value = username;
+    document.getElementById('editCamPass').value = password;
+    document.getElementById('editCamChannel').value = channel;
+    new bootstrap.Modal(document.getElementById('editCamModal')).show();
+}
+
+// --- WEB SSH TERMINAL JAVASCRIPT ---
+let currentTerm = null;
+let currentFitAddon = null;
+let currentTermWs = null;
+let activeTermRouterId = null;
+
+function openTerminalModal(routerId, routerName, port, savedPwd) {
+    activeTermRouterId = routerId;
+    document.getElementById('termModalTitle').innerText = `${routerName} (SSH :${port + 100})`;
+    document.getElementById('termStatusBadge').innerText = 'Подключение...';
+    document.getElementById('termStatusBadge').className = 'badge bg-warning text-dark';
+    
+    if (savedPwd) {
+        document.getElementById('termInputPwd').value = savedPwd;
+    } else {
+        document.getElementById('termInputPwd').value = '';
+    }
+
+    const modalEl = document.getElementById('terminalModal');
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    modal.show();
+
+    setTimeout(() => {
+        initTerminalSession(routerId, document.getElementById('termInputPwd').value);
+    }, 350);
+}
+
+function reconnectTermWithPwd() {
+    if (activeTermRouterId) {
+        const pwd = document.getElementById('termInputPwd').value;
+        initTerminalSession(activeTermRouterId, pwd);
+    }
+}
+
+function initTerminalSession(routerId, pwd) {
+    const container = document.getElementById('terminalContainer');
+    container.innerHTML = '';
+
+    if (currentTerm) {
+        try { currentTerm.dispose(); } catch (e) {}
+    }
+    if (currentTermWs) {
+        try { currentTermWs.close(); } catch (e) {}
+    }
+
+    currentTerm = new Terminal({
+        cursorBlink: true,
+        fontSize: 14,
+        fontFamily: 'SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+        theme: {
+            background: '#0a0a0c',
+            foreground: '#dcdcdc',
+            cursor: '#00ff66',
+            selectionBackground: '#5c5c5c'
+        }
+    });
+
+    currentFitAddon = new FitAddon.FitAddon();
+    currentTerm.loadAddon(currentFitAddon);
+    currentTerm.open(container);
+    currentFitAddon.fit();
+
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const pwdParam = (pwd !== undefined && pwd !== null && pwd !== '') ? `?pwd=${encodeURIComponent(pwd)}` : '';
+    const wsUrl = `${proto}//${window.location.host}/ws/terminal/${routerId}${pwdParam}`;
+    currentTermWs = new WebSocket(wsUrl);
+
+    currentTermWs.binaryType = 'arraybuffer';
+
+    currentTermWs.onopen = function () {
+        document.getElementById('termStatusBadge').innerText = 'В сети (Онлайн)';
+        document.getElementById('termStatusBadge').className = 'badge bg-success';
+        currentFitAddon.fit();
+        currentTermWs.send(JSON.stringify({
+            type: 'resize',
+            cols: currentTerm.cols,
+            rows: currentTerm.rows
+        }));
+    };
+
+    currentTermWs.onmessage = function (event) {
+        if (event.data instanceof ArrayBuffer) {
+            const bytes = new Uint8Array(event.data);
+            currentTerm.write(bytes);
+        } else {
+            currentTerm.write(event.data);
+        }
+    };
+
+    currentTermWs.onclose = function () {
+        document.getElementById('termStatusBadge').innerText = 'Отключено';
+        document.getElementById('termStatusBadge').className = 'badge bg-secondary';
+        currentTerm.write('\r\n\x1b[90m[Сессия завершена]\x1b[0m\r\n');
+    };
+
+    currentTermWs.onerror = function () {
+        document.getElementById('termStatusBadge').innerText = 'Ошибка соединения';
+        document.getElementById('termStatusBadge').className = 'badge bg-danger';
+    };
+
+    currentTerm.onData(data => {
+        if (currentTermWs && currentTermWs.readyState === WebSocket.OPEN) {
+            currentTermWs.send(JSON.stringify({ type: 'input', data: data }));
+        }
+    });
+
+    currentTerm.onResize(size => {
+        if (currentTermWs && currentTermWs.readyState === WebSocket.OPEN) {
+            currentTermWs.send(JSON.stringify({ type: 'resize', cols: size.cols, rows: size.rows }));
+        }
+    });
+}
+
+function clearTerm() {
+    if (currentTerm) {
+        currentTerm.clear();
+    }
+}
+
+function reconnectTerm() {
+    if (activeTermRouterId) {
+        initTerminalSession(activeTermRouterId);
+    }
+}
+
+function closeTerminal() {
+    if (currentTermWs) {
+        try { currentTermWs.close(); } catch (e) {}
+    }
+}
+
+window.addEventListener('resize', () => {
+    if (currentFitAddon) {
+        try { currentFitAddon.fit(); } catch (e) {}
+    }
+});
+
+</script>
+
+<!-- МОДАЛЬНОЕ ОКНО: WEB SSH ТЕРМИНАЛ -->
+<div class="modal fade" id="terminalModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content bg-dark text-white border-secondary shadow-lg">
+            <div class="modal-header border-secondary py-2 bg-black">
+                <div class="d-flex align-items-center">
+                    <span class="badge bg-warning text-dark me-2 font-mono">SSH</span>
+                    <h6 class="modal-title font-mono text-success mb-0" id="termModalTitle">root@OpenWrt:~#</h6>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <div class="input-group input-group-sm" style="width: 220px;">
+                        <span class="input-group-text bg-dark border-secondary text-warning"><i class="bi bi-key-fill"></i></span>
+                        <input type="password" id="termInputPwd" class="form-control font-mono bg-dark text-white border-secondary" placeholder="Пароль root" onkeydown="if(event.key==='Enter') reconnectTermWithPwd()">
+                        <button class="btn btn-warning" onclick="reconnectTermWithPwd()" title="Подключиться с паролем">Войти</button>
+                    </div>
+                    <button class="btn btn-sm btn-outline-secondary py-0" onclick="clearTerm()" title="Очистить экран"><i class="bi bi-eraser"></i></button>
+                    <button class="btn btn-sm btn-outline-primary py-0" onclick="reconnectTerm()" title="Переподключиться"><i class="bi bi-arrow-repeat"></i></button>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" onclick="closeTerminal()"></button>
+                </div>
+            </div>
+            <div class="modal-body p-2 bg-black" style="min-height: 480px; max-height: 75vh;">
+                <div id="terminalContainer" style="width: 100%; height: 480px;"></div>
+            </div>
+            <div class="modal-footer border-secondary py-1 bg-black justify-content-between small text-muted font-mono">
+                <div>Статус: <span id="termStatusBadge" class="badge bg-secondary">Отключено</span></div>
+                <div>Подсказка: поддерживаются все стандартные сочетания (Ctrl+C, Tab, стрелки).</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>
