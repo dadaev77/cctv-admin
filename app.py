@@ -659,7 +659,17 @@ async def terminal_ws(websocket: WebSocket, router_id: int, pwd: str = ""):
                 try:
                     payload = json.loads(msg)
                     if payload.get("type") == "input":
-                        chan.send(payload.get("data", "").encode("utf-8"))
+                        raw = payload.get("data", "").encode("utf-8")
+                        total = 0
+                        while total < len(raw) and not stop_event.is_set():
+                            try:
+                                n = chan.send(raw[total:])
+                                if n > 0:
+                                    total += n
+                                else:
+                                    await asyncio.sleep(0.01)
+                            except Exception:
+                                break
                     elif payload.get("type") == "resize":
                         cols = int(payload.get("cols", 80))
                         rows = int(payload.get("rows", 24))

@@ -237,7 +237,7 @@
                             <a href="http://{{ server_ip }}:{{ (r.tunnel_port or 1554) + 200 }}/" target="_blank" class="btn btn-sm btn-outline-secondary me-1" title="Открыть веб-панель управления роутером (OpenWrt LuCI)">
                                 <i class="bi bi-sliders me-1"></i>Панель LuCI
                             </a>
-                            <button class="btn btn-sm btn-outline-info me-1" onclick="showRouterInstructions('{{ r.name|e }}', {{ r.tunnel_port }}, '{{ r.uplink_type or 'lte' }}', '{{ (r.wifi_ssid or '')|e }}', '{{ (r.wifi_password or '')|e }}')" title="Инструкция по настройке этого роутера">
+                            <button class="btn btn-sm btn-outline-info me-1" onclick="showRouterInstructions({{ r.id }}, '{{ r.name|e }}', {{ r.tunnel_port }}, '{{ r.uplink_type or 'lte' }}', '{{ (r.wifi_ssid or '')|e }}', '{{ (r.wifi_password or '')|e }}')" title="Инструкция по настройке этого роутера">
                                 <i class="bi bi-terminal me-1"></i>Команда
                             </button>
                             <button class="btn btn-sm btn-outline-primary me-1" onclick="openEditRouterModal({{ r.id }}, '{{ r.site_id }}', '{{ r.name|e }}', {{ r.tunnel_port }}, '{{ r.model|e }}', '{{ (r.notes or '')|e }}', '{{ r.uplink_type or 'lte' }}', '{{ (r.wifi_ssid or '')|e }}', '{{ (r.wifi_password or '')|e }}', '{{ (r.ssh_password or '')|e }}')" title="Редактировать">
@@ -352,10 +352,15 @@
                     <div class="tab-pane fade show active" id="pane-lte">
                         <div class="small text-muted mb-2"><i class="bi bi-check2-circle text-success me-1"></i>Роутер работает автономно через встроенную SIM-карту 4G. Оба сетевых разъёма объединены в LAN для камер.</div>
                         <div class="position-relative mb-3">
-                            <pre class="bg-black p-3 rounded font-mono text-success mb-0" id="cmdLte" style="white-space: pre-wrap; word-break: break-all;"></pre>
-                            <button class="btn btn-sm btn-outline-light position-absolute top-0 end-0 m-2" onclick="copyPre('cmdLte')">
-                                <i class="bi bi-clipboard me-1"></i>Скопировать
-                            </button>
+                            <pre class="bg-black p-3 rounded font-mono text-success mb-0" id="cmdLte" style="white-space: pre-wrap; word-break: break-all; min-height: 80px;"></pre>
+                            <div class="position-absolute top-0 end-0 m-2 d-flex gap-2">
+                                <button type="button" class="btn btn-sm btn-warning fw-semibold shadow-sm" onclick="sendCmdToTerminal('cmdLte')">
+                                    <i class="bi bi-terminal-fill me-1"></i>Вставить в консоль
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-light shadow-sm" onclick="copyPre('cmdLte')">
+                                    <i class="bi bi-clipboard me-1"></i>Скопировать
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -363,16 +368,21 @@
                     <div class="tab-pane fade" id="pane-wan">
                         <div class="small text-muted mb-2"><i class="bi bi-info-circle text-info me-1"></i>Кабель от местного роутера/провайдера вставляется в <b>синий порт WAN</b>. Камера подключается в <b>порт LAN</b>.</div>
                         <div class="position-relative mb-3">
-                            <pre class="bg-black p-3 rounded font-mono text-warning mb-0" id="cmdWan" style="white-space: pre-wrap; word-break: break-all;"></pre>
-                            <button class="btn btn-sm btn-outline-light position-absolute top-0 end-0 m-2" onclick="copyPre('cmdWan')">
-                                <i class="bi bi-clipboard me-1"></i>Скопировать
-                            </button>
+                            <pre class="bg-black p-3 rounded font-mono text-warning mb-0" id="cmdWan" style="white-space: pre-wrap; word-break: break-all; min-height: 120px;"></pre>
+                            <div class="position-absolute top-0 end-0 m-2 d-flex gap-2">
+                                <button type="button" class="btn btn-sm btn-warning fw-semibold shadow-sm" onclick="sendCmdToTerminal('cmdWan')">
+                                    <i class="bi bi-terminal-fill me-1"></i>Вставить в консоль
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-light shadow-sm" onclick="copyPre('cmdWan')">
+                                    <i class="bi bi-clipboard me-1"></i>Скопировать
+                                </button>
+                            </div>
                         </div>
                     </div>
 
                     <!-- ВКЛАДКА 3: WI-FI -->
                     <div class="tab-pane fade" id="pane-wifi">
-                        <div class="small text-muted mb-2"><i class="bi bi-info-circle text-info me-1"></i>Роутер подключается по воздуху к Wi-Fi сети объекта. Камера остаётся подключена по кабелю в роутер.</div>
+                        <div class="small text-muted mb-2"><i class="bi bi-info-circle text-info me-1"></i>Роутер подключается по воздуху к Wi-Fi сети объекта. Оба кабельных порта роутера остаются для камер/ПК.</div>
                         <div class="row g-2 mb-2">
                             <div class="col-6">
                                 <label class="small text-muted">Имя сети Wi-Fi (SSID):</label>
@@ -384,10 +394,15 @@
                             </div>
                         </div>
                         <div class="position-relative mb-3">
-                            <pre class="bg-black p-3 rounded font-mono text-info mb-0" id="cmdWifi" style="white-space: pre-wrap; word-break: break-all;"></pre>
-                            <button class="btn btn-sm btn-outline-light position-absolute top-0 end-0 m-2" onclick="copyPre('cmdWifi')">
-                                <i class="bi bi-clipboard me-1"></i>Скопировать
-                            </button>
+                            <pre class="bg-black p-3 rounded font-mono text-info mb-0" id="cmdWifi" style="white-space: pre-wrap; word-break: break-all; min-height: 120px;"></pre>
+                            <div class="position-absolute top-0 end-0 m-2 d-flex gap-2">
+                                <button type="button" class="btn btn-sm btn-warning fw-semibold shadow-sm" onclick="sendCmdToTerminal('cmdWifi')">
+                                    <i class="bi bi-terminal-fill me-1"></i>Вставить в консоль
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-light shadow-sm" onclick="copyPre('cmdWifi')">
+                                    <i class="bi bi-clipboard me-1"></i>Скопировать
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -703,22 +718,62 @@
 <script>
 let hlsInstance = null;
 
-function copyText(elemId) {
-    const input = document.getElementById(elemId);
-    input.select();
-    navigator.clipboard.writeText(input.value);
+function copyToClipboard(text, successMsg = 'Команда скопирована в буфер обмена!') {
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(() => {
+            showToast(successMsg);
+        }).catch(() => {
+            fallbackCopy(text, successMsg);
+        });
+        return;
+    }
+    fallbackCopy(text, successMsg);
+}
+
+function fallbackCopy(text, successMsg) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    ta.style.top = '-9999px';
+    ta.setAttribute('readonly', '');
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    ta.setSelectionRange(0, 99999);
+    try {
+        const ok = document.execCommand('copy');
+        if (ok) {
+            showToast(successMsg);
+        } else {
+            prompt('Скопируйте вручную (Ctrl+C, затем Enter):', text);
+        }
+    } catch (e) {
+        prompt('Скопируйте вручную (Ctrl+C, затем Enter):', text);
+    }
+    document.body.removeChild(ta);
+}
+
+function showToast(msg) {
+    const existing = document.getElementById('globalToastMsg');
+    if (existing) existing.remove();
     const toast = document.createElement('div');
+    toast.id = 'globalToastMsg';
     toast.className = 'position-fixed bottom-0 end-0 p-3';
-    toast.style.zIndex = '9999';
-    toast.innerHTML = '<div class="toast show align-items-center text-white bg-success border-0"><div class="d-flex"><div class="toast-body"><i class="bi bi-check-circle me-2"></i>Ссылка скопирована в буфер!</div></div></div>';
+    toast.style.zIndex = '99999';
+    toast.innerHTML = `<div class="toast show align-items-center text-white bg-success border-0 shadow-lg"><div class="d-flex"><div class="toast-body fw-bold fs-6"><i class="bi bi-check2-circle me-2 fs-5"></i>${msg}</div></div></div>`;
     document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 2500);
 }
 
+function copyText(elemId) {
+    const input = document.getElementById(elemId);
+    copyToClipboard(input.value, 'Ссылка скопирована!');
+}
+
 function copyPre(elemId) {
     const text = document.getElementById(elemId).innerText;
-    navigator.clipboard.writeText(text);
-    alert('Команда скопирована в буфер обмена!');
+    copyToClipboard(text, 'Команда скопирована в буфер обмена!');
 }
 
 function playHls(title, hlsUrl) {
@@ -757,6 +812,7 @@ document.getElementById('playerModal').addEventListener('hidden.bs.modal', funct
     }
 });
 
+let currentInstrRouterId = null;
 let currentInstrPort = 1554;
 
 function toggleWifiFields(prefix) {
@@ -768,21 +824,54 @@ function toggleWifiFields(prefix) {
 function updateLiveWifiCmd() {
     const ssid = document.getElementById('liveWifiSsid').value.trim() || 'WIFI_NAME';
     const pass = document.getElementById('liveWifiPass').value.trim() || 'WIFI_PASSWORD';
-    const cmd = `uci set wireless.radio0.disabled='0'; uci set network.wan=interface; uci set network.wan.proto='dhcp'; uci commit network; uci set wireless.sta=wifi-iface; uci set wireless.sta.device='radio0'; uci set wireless.sta.mode='sta'; uci set wireless.sta.network='wan'; uci set wireless.sta.ssid='${ssid}'; uci set wireless.sta.key='${pass}'; uci set wireless.sta.encryption='psk2'; uci commit wireless; sed -i \"s|dbclient.*root@135.106.221.242|dbclient -y -i /root/.ssh/id_rsa -K 15 -N -R 127.0.0.1:${currentInstrPort}:192.168.1.213:554 -R 0.0.0.0:${currentInstrPort+300}:192.168.1.213:80 -R 0.0.0.0:${currentInstrPort+200}:127.0.0.1:80 root@135.106.221.242|g\" /etc/rc.local && reboot`;
+    const cmd = `uci set wireless.radio0.disabled='0'
+uci delete network.wan.device
+uci set network.wan=interface
+uci set network.wan.proto='dhcp'
+uci commit network
+uci set wireless.sta=wifi-iface
+uci set wireless.sta.device='radio0'
+uci set wireless.sta.mode='sta'
+uci set wireless.sta.network='wan'
+uci set wireless.sta.ssid='${ssid}'
+uci set wireless.sta.key='${pass}'
+uci set wireless.sta.encryption='psk2'
+uci commit wireless
+sed -i "s|dbclient.*root@135.106.221.242|dbclient -y -i /root/.ssh/id_rsa -K 15 -N -R 127.0.0.1:${currentInstrPort}:192.168.1.213:554 -R 127.0.0.1:${currentInstrPort+100}:127.0.0.1:22 -R 0.0.0.0:${currentInstrPort+300}:192.168.1.213:80 -R 0.0.0.0:${currentInstrPort+200}:127.0.0.1:80 root@135.106.221.242|g" /etc/rc.local
+reboot`;
     document.getElementById('cmdWifi').innerText = cmd;
 }
 
-function showRouterInstructions(name, port, uplinkType, wifiSsid, wifiPass) {
+function showRouterInstructions(routerId, name, port, uplinkType, wifiSsid, wifiPass) {
+    currentInstrRouterId = routerId;
     currentInstrPort = port;
     document.getElementById('instrRouterName').innerText = name;
     document.getElementById('instrPortBadge').innerText = port;
     
-    // Command 1: LTE (Full multi-port tunnel: RTSP + Cam Web + Router LuCI)
-    const lteCmd = `sed -i "s|dbclient.*root@135.106.221.242|dbclient -y -i /root/.ssh/id_rsa -K 15 -N -R 127.0.0.1:${port}:192.168.1.213:554 -R 127.0.0.1:${port+100}:127.0.0.1:22 -R 0.0.0.0:${port+300}:192.168.1.213:80 -R 0.0.0.0:${port+200}:127.0.0.1:80 root@135.106.221.242|g" /etc/rc.local && reboot`;
+    // Command 1: LTE (Full multi-port tunnel: RTSP + SSH + Cam Web + Router LuCI)
+    const lteCmd = `sed -i "s|dbclient.*root@135.106.221.242|dbclient -y -i /root/.ssh/id_rsa -K 15 -N -R 127.0.0.1:${port}:192.168.1.213:554 -R 127.0.0.1:${port+100}:127.0.0.1:22 -R 0.0.0.0:${port+300}:192.168.1.213:80 -R 0.0.0.0:${port+200}:127.0.0.1:80 root@135.106.221.242|g" /etc/rc.local
+reboot`;
     document.getElementById('cmdLte').innerText = lteCmd;
     
     // Command 2: WAN Cable (Full multi-port tunnel)
-    const wanCmd = `uci set network.vlan1=switch_vlan; uci set network.vlan1.device='switch0'; uci set network.vlan1.vlan='1'; uci set network.vlan1.ports='1 6t'; uci set network.vlan2=switch_vlan; uci set network.vlan2.device='switch0'; uci set network.vlan2.vlan='2'; uci set network.vlan2.ports='0 6t'; uci set network.lan.device='eth0.1'; uci set network.wan=interface; uci set network.wan.device='eth0.2'; uci set network.wan.proto='dhcp'; uci set network.wan6=interface; uci set network.wan6.device='eth0.2'; uci set network.wan6.proto='dhcpv6'; uci commit network; sed -i "s|dbclient.*root@135.106.221.242|dbclient -y -i /root/.ssh/id_rsa -K 15 -N -R 127.0.0.1:${port}:192.168.1.213:554 -R 127.0.0.1:${port+100}:127.0.0.1:22 -R 0.0.0.0:${port+300}:192.168.1.213:80 -R 0.0.0.0:${port+200}:127.0.0.1:80 root@135.106.221.242|g" /etc/rc.local && reboot`;
+    const wanCmd = `uci set network.vlan1=switch_vlan
+uci set network.vlan1.device='switch0'
+uci set network.vlan1.vlan='1'
+uci set network.vlan1.ports='1 6t'
+uci set network.vlan2=switch_vlan
+uci set network.vlan2.device='switch0'
+uci set network.vlan2.vlan='2'
+uci set network.vlan2.ports='0 6t'
+uci set network.lan.device='eth0.1'
+uci set network.wan=interface
+uci set network.wan.device='eth0.2'
+uci set network.wan.proto='dhcp'
+uci set network.wan6=interface
+uci set network.wan6.device='eth0.2'
+uci set network.wan6.proto='dhcpv6'
+uci commit network
+sed -i "s|dbclient.*root@135.106.221.242|dbclient -y -i /root/.ssh/id_rsa -K 15 -N -R 127.0.0.1:${port}:192.168.1.213:554 -R 127.0.0.1:${port+100}:127.0.0.1:22 -R 0.0.0.0:${port+300}:192.168.1.213:80 -R 0.0.0.0:${port+200}:127.0.0.1:80 root@135.106.221.242|g" /etc/rc.local
+reboot`;
     document.getElementById('cmdWan').innerText = wanCmd;
     
     // Command 3: WiFi
@@ -809,6 +898,56 @@ function showRouterInstructions(name, port, uplinkType, wifiSsid, wifiPass) {
     }
 
     new bootstrap.Modal(document.getElementById('routerInstructionModal')).show();
+}
+
+function sendCmdToTerminal(elemId) {
+    const text = document.getElementById(elemId).innerText.trim();
+    if (!text) return;
+
+    // Hide instruction modal
+    const instrModalEl = document.getElementById('routerInstructionModal');
+    const instrModal = bootstrap.Modal.getInstance(instrModalEl);
+    if (instrModal) instrModal.hide();
+
+    // If terminal is already connected to this router, send directly
+    if (activeTermRouterId === currentInstrRouterId && currentTermWs && currentTermWs.readyState === WebSocket.OPEN) {
+        showToast('Отправка команд в консоль...');
+        sendLinesToWs(text);
+    } else {
+        // Open terminal modal for this router
+        openTerminalModal(currentInstrRouterId, document.getElementById('instrRouterName').innerText, currentInstrPort, '');
+        showToast('Подключение консоли...');
+        
+        let attempts = 0;
+        const checkInterval = setInterval(() => {
+            attempts++;
+            if (currentTermWs && currentTermWs.readyState === WebSocket.OPEN) {
+                clearInterval(checkInterval);
+                setTimeout(() => {
+                    showToast('Выполнение команд на роутере...');
+                    sendLinesToWs(text);
+                }, 900);
+            } else if (attempts > 50) {
+                clearInterval(checkInterval);
+            }
+        }, 150);
+    }
+}
+
+function sendLinesToWs(text) {
+    const lines = text.split('\n');
+    let delay = 0;
+    lines.forEach((line) => {
+        const trimmed = line.trim();
+        if (trimmed) {
+            setTimeout(() => {
+                if (currentTermWs && currentTermWs.readyState === WebSocket.OPEN) {
+                    currentTermWs.send(JSON.stringify({ type: 'input', data: trimmed + '\r' }));
+                }
+            }, delay);
+            delay += 160; // 160ms between commands guarantees zero drop in BusyBox ash
+        }
+    });
 }
 
 function openEditSiteModal(id, name, address, notes) {
